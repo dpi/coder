@@ -90,9 +90,23 @@ class FunctionCommentSniff implements Sniff
     {
         $tokens = $phpcsFile->getTokens();
         $find   = Tokens::$methodPrefixes;
-        $find[] = T_WHITESPACE;
+        $find[T_WHITESPACE] = T_WHITESPACE;
 
-        $commentEnd       = $phpcsFile->findPrevious($find, ($stackPtr - 1), null, true);
+        for ($commentEnd = ($stackPtr - 1); $commentEnd >= 0; $commentEnd--) {
+            if (isset($ignore[$tokens[$commentEnd]['code']]) === true) {
+                continue;
+            }
+
+            if ($tokens[$commentEnd]['code'] === T_ATTRIBUTE_END
+                && isset($tokens[$commentEnd]['attribute_opener']) === true
+            ) {
+                $commentEnd = $tokens[$commentEnd]['attribute_opener'];
+                continue;
+            }
+
+            break;
+        }
+
         $beforeCommentEnd = $phpcsFile->findPrevious(Tokens::$emptyTokens, ($commentEnd - 1), null, true);
         if (($tokens[$commentEnd]['code'] !== T_DOC_COMMENT_CLOSE_TAG
             && $tokens[$commentEnd]['code'] !== T_COMMENT)
@@ -152,11 +166,22 @@ class FunctionCommentSniff implements Sniff
         }//end foreach
 
         if ($tokens[$commentEnd]['line'] !== ($tokens[$stackPtr]['line'] - 1)) {
-            $error = 'There must be no blank lines after the function comment';
-            $fix   = $phpcsFile->addFixableError($error, $commentEnd, 'SpacingAfter');
-            if ($fix === true) {
-                $phpcsFile->fixer->replaceToken(($commentEnd + 1), '');
+          for ($i = ($commentEnd + 1); $i < $stackPtr; $i++) {
+            if ($tokens[$i]['column'] !== 1) {
+              continue;
             }
+
+            if ($tokens[$i]['code'] === T_WHITESPACE
+              && $tokens[$i]['line'] !== $tokens[($i + 1)]['line']
+            ) {
+              $error = 'There must be no blank lines after the function comment';
+              $fix = $phpcsFile->addFixableError($error, $commentEnd, 'SpacingAfter');
+              if ($fix === true) {
+                  $phpcsFile->fixer->replaceToken(($commentEnd + 1), '');
+              }
+              break;
+            }
+          }
         }
 
         $this->processReturn($phpcsFile, $stackPtr, $commentStart);
